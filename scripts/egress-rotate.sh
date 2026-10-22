@@ -35,16 +35,14 @@ DIRECT_IP=$(jq -r '.direct_ip // empty' "$EGRESS_STATE_FILE" 2>/dev/null || true
 
 case "$CUR_KIND" in
   direct) CUR_KEY="direct:$DIRECT_IP" ;;
-  *)      CUR_KEY="$CUR_KIND:$CUR_UP" ;;
+  *)      CUR_KEY="$CUR_UP" ;;
 esac
 
 # Mark the current egress as unusable for a while. For a relay/http candidate
 # the key is the entry address; the preflight that just failed was the same one.
-if [ "$CUR_UP" != "direct" ] || [ "$CUR_KIND" = "direct" ]; then
-  CUR_EGRESS=$(jq -r '.egress_ip // empty' "$EGRESS_STATE_FILE" 2>/dev/null || true)
-  egress_bl_add "$CUR_KEY" "$CUR_EGRESS" "$REASON" "$TTL" || true
-  echo "rotate: blacklisted $CUR_KEY ($REASON, ${TTL}s)"
-fi
+CUR_EGRESS=$(jq -r '.egress_ip // empty' "$EGRESS_STATE_FILE" 2>/dev/null || true)
+egress_bl_add "$CUR_KEY" "$CUR_EGRESS" "$REASON" "$TTL" || true
+echo "rotate: blacklisted $CUR_KEY ($REASON, ${TTL}s)"
 
 tries=0
 while IFS=$'\t' read -r kind target source; do

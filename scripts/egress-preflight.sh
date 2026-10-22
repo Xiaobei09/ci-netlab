@@ -50,7 +50,8 @@ code=$(curl -sS -o "$BODY" -w '%{http_code}' -m "$TMO" "${ARGS[@]}" \
   -H "User-Agent: opencode/1.18.32" \
   -H "Authorization: Bearer public" \
   -H "x-opencode-session: $(make_sid)" \
-  -d "$PAYLOAD" 2>/dev/null || echo 000)
+  -d "$PAYLOAD" 2>/dev/null)
+[ -n "$code" ] || code=000
 
 reason="ok"
 if [ "$code" = "429" ]; then
