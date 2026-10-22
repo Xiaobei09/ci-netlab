@@ -50,7 +50,8 @@ cat > "$ISO/home/.config/opencode/opencode.json" <<'JSON'
     "websearch": "deny",
     "lsp": "deny",
     "doom_loop": "deny",
-    "skill": "deny"
+    "skill": "deny",
+    "execute": "deny"
   }
 }
 JSON
@@ -124,10 +125,10 @@ while read -r hp; do
   (
     cd "$ISO/work" || exit 1
     HOME="$ISO/home" XDG_CONFIG_HOME="$ISO/home/.config" \
-      setsid -w timeout 90 "$BIN" run --standalone --model "$MODEL" "hi" > "$log" 2>&1
+      setsid -w timeout 45 "$BIN" run --standalone --model "$MODEL" "Reply with exactly: OK" > "$log" 2>&1
   )
   rc=$?
-  err=$(grep -aE '^Error:' "$log" | head -1 | cut -c1-100)
+  err=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -aE '^Error:' | head -1 | cut -c1-100)
   conns=0
   if [ "$hp" != 'direct' ]; then
     conns=$(grep -ac '^connect ' /tmp/lab/forward.log 2>/dev/null || true)
@@ -137,7 +138,7 @@ while read -r hp; do
     result=INVALID
   elif [ "$rc" -eq 0 ]; then
     result=SUCCESS
-  elif tail -5 "$log" | grep -aq '^Error: Free usage limit reached'; then
+  elif sed 's/\x1b\[[0-9;]*m//g' "$log" | tail -5 | grep -qE '^Error: Free usage limit reached'; then
     result=LIMITED
   else
     result=ERROR
