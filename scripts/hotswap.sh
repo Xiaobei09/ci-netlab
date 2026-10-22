@@ -187,7 +187,7 @@ done
 sleep "$SWITCH_DELAY"
 n_before=$(grep -ac 'target=opencode.ai:443' "$PROXY_LOG" 2>/dev/null || true)
 n_before=${n_before:-0}
-echo relay > "$UP"
+echo "$RELAY" > "$UP"
 bump_epoch
 echo "--- SWITCH to $RELAY at $(date -u +%Y-%m-%dT%H:%M:%SZ) after ${n_before} CONNECT(s) ---" >> "$PROXY_LOG"
 
