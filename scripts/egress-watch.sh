@@ -38,21 +38,9 @@ while IFS= read -r line; do
       if bash "$SCRIPT_DIR/egress-rotate.sh" --reason quota >> "$WATCH_LOG" 2>&1; then
         state=$(jq -c '{kind,upstream,egress_ip}' "$EGRESS_STATE_FILE" 2>/dev/null || echo '{}')
         log "rotate ok $state"
-        if [ -n "${TG_BOT_TOKEN:-}" ] && [ -n "${TG_PUSH_CHAT:-}" ]; then
-          curl -sS -m 20 -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TG_PUSH_CHAT}" \
-            --data-urlencode "text=CI egress switched: ${state}" \
-            >/dev/null 2>&1 || true
-        fi
       else
         log "rotate failed; keeping current egress"
         fail_until=$((now + 60))
-        if [ -n "${TG_BOT_TOKEN:-}" ] && [ -n "${TG_PUSH_CHAT:-}" ]; then
-          curl -sS -m 20 -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TG_PUSH_CHAT}" \
-            --data-urlencode "text=CI egress rotate FAILED: no candidate passed preflight" \
-            >/dev/null 2>&1 || true
-        fi
       fi
       ;;
   esac
