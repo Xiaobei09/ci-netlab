@@ -36,11 +36,16 @@ while IFS= read -r line; do
       last=$now
       log "quota error detected; rotating egress"
       if bash "$SCRIPT_DIR/egress-rotate.sh" --reason quota >> "$WATCH_LOG" 2>&1; then
+        # The rotation can take 10-60s. Reset the debounce *after* it returns so
+        # 429 lines already buffered from the old egress cannot immediately
+        # blacklist the freshly selected one.
+        last=$(egress_now)
         state=$(jq -c '{kind,upstream,egress_ip}' "$EGRESS_STATE_FILE" 2>/dev/null || echo '{}')
         log "rotate ok $state"
       else
+        last=$(egress_now)
         log "rotate failed; keeping current egress"
-        fail_until=$((now + 60))
+        fail_until=$((last + 60))
       fi
       ;;
   esac
