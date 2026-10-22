@@ -14,12 +14,12 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=egress-lib.sh
-. "$SCRIPT_DIR/egress-lib.sh"
-
 RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
 EGRESS_STATE_DIR="${EGRESS_STATE_DIR:-$RUNNER_TEMP/egress}"
 export EGRESS_STATE_DIR
+# shellcheck source=egress-lib.sh
+. "$SCRIPT_DIR/egress-lib.sh"
+
 mkdir -p "$EGRESS_STATE_DIR"
 : > "$EGRESS_CANDIDATES_FILE"
 echo 0 > "$EGRESS_EPOCH_FILE"
@@ -128,8 +128,17 @@ while IFS=$'\t' read -r kind target source; do
   fi
   ttl=21600
   [ "$why" = "transport" ] && ttl=1800
-  egress_bl_add "$key" "" "$why" "$ttl" || true
-  log "candidate $kind $target failed code=$code reason=$why (blacklist ${ttl}s)"
+  if [ "$kind" = "direct" ]; then
+    failed_egress="${DIRECT_IP:-}"
+  elif [ "$why" = "quota" ] || [ "$why" = "body_error" ]; then
+    # Only trace quota failures: a dead relay would burn the trace timeout for
+    # no diagnostic value, and the entry address is enough to blacklist it.
+    failed_egress=$(egress_candidate_ip "$kind" "$target" 2>/dev/null || true)
+  else
+    failed_egress=""
+  fi
+  egress_bl_add "$key" "$failed_egress" "$why" "$ttl" || true
+  log "candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?} (blacklist ${ttl}s)"
 done < "$EGRESS_CANDIDATES_FILE"
 
 if [ -z "$SELECTED_KIND" ]; then

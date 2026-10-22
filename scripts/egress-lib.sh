@@ -134,3 +134,15 @@ egress_trace_direct() {
     https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null \
     | awk -F= '/^ip=/{print $2; exit}'
 }
+
+# egress_candidate_ip <direct|relay|http> <target>
+# Best-effort observed exit IP for a candidate. Used for diagnostics and for
+# recording what an unavailable entry actually pointed at.
+egress_candidate_ip() {
+  local kind="$1" target="${2:-}"
+  case "$kind" in
+    direct) egress_trace_direct ;;
+    relay)  egress_trace_relay "$target" ;;
+    http)   egress_trace_http "$target" ;;
+  esac
+}

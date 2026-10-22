@@ -82,8 +82,15 @@ while IFS=$'\t' read -r kind target source; do
     exit 0
   fi
 
-  egress_bl_add "$key" "" "$why" "$TTL" || true
-  echo "rotate: candidate $kind $target failed code=$code reason=$why"
+  if [ "$kind" = "direct" ]; then
+    failed_egress="$DIRECT_IP"
+  elif [ "$why" = "quota" ] || [ "$why" = "body_error" ]; then
+    failed_egress=$(egress_candidate_ip "$kind" "$target" 2>/dev/null || true)
+  else
+    failed_egress=""
+  fi
+  egress_bl_add "$key" "$failed_egress" "$why" "$TTL" || true
+  echo "rotate: candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?}"
 done < "$EGRESS_CANDIDATES_FILE"
 
 echo "rotate: no candidate passed the preflight"
