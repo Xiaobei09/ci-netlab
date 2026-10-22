@@ -16,11 +16,23 @@ WS="${GITHUB_WORKSPACE:-$PWD}"
 sudo cp /etc/hosts /tmp/lab/hosts.orig
 
 echo '--- install opencode ---'
-curl -fsSL --retry 3 https://opencode.ai/v2/install | bash >/tmp/lab/install.log 2>&1
+: > /tmp/lab/install.log
 export PATH="$HOME/.opencode/bin:$PATH"
-BIN="$(command -v opencode || true)"
-[ -z "$BIN" ] && BIN="$HOME/.opencode/bin/opencode"
-"$BIN" --version || true
+BIN=''
+for attempt in 1 2 3 4; do
+  echo "install attempt $attempt" >> /tmp/lab/install.log
+  curl -fsSL --retry 3 --retry-delay 3 https://opencode.ai/v2/install | bash >> /tmp/lab/install.log 2>&1 || true
+  BIN="$(command -v opencode || true)"
+  if [ -z "$BIN" ] && [ -x "$HOME/.opencode/bin/opencode" ]; then BIN="$HOME/.opencode/bin/opencode"; fi
+  if [ -n "$BIN" ] && [ -x "$BIN" ]; then break; fi
+  sleep $((attempt * 5))
+done
+if [ -z "$BIN" ] || [ ! -x "$BIN" ]; then
+  echo 'opencode install failed after retries'
+  tail -30 /tmp/lab/install.log
+  exit 1
+fi
+"$BIN" --version || { echo 'opencode version check failed'; exit 1; }
 
 ISO=/tmp/iso
 rm -rf "$ISO"
