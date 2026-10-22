@@ -10,6 +10,7 @@ SOURCE="${SOURCE:-all.txt}"
 MODEL="${MODEL:-opencode/big-pickle}"
 RELAY="${RELAY:-}"
 MAX_RUNS="${MAX_RUNS:-30}"
+WAIT_SECONDS="${WAIT_SECONDS:-0}"
 WS="${GITHUB_WORKSPACE:-$PWD}"
 
 sudo cp /etc/hosts /tmp/lab/hosts.orig
@@ -125,4 +126,12 @@ while [ "$i" -lt "$MAX_RUNS" ]; do
 done
 
 echo "CAPACITY relay=$RELAY egress=$EGRESS colo=$COLO successes=$ok first_non_success_run=$limited_at total_conns=$(grep -ac '^connect ' /tmp/lab/forward.log 2>/dev/null || echo 0)"
+
+if [ "$limited_at" -gt 0 ] && [ "$WAIT_SECONDS" -gt 0 ]; then
+  echo "RESET waiting ${WAIT_SECONDS}s after first non-success ..."
+  sleep "$WAIT_SECONDS"
+  run_client "after-wait"
+  echo "RESET result=$RESULT rc=$RC ${ERR}"
+fi
+
 sudo cp /tmp/lab/hosts.orig /etc/hosts

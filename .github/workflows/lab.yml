@@ -28,12 +28,16 @@ on:
         description: 'command for shell mode'
         required: false
         default: ''
+      wait:
+        description: 'seconds to wait after first non-success (reset test)'
+        required: false
+        default: '0'
 permissions:
   contents: read
 jobs:
   lab:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       BASE: https://raw.githubusercontent.com/Xiaobei09/proxyip/main
     steps:
@@ -70,6 +74,7 @@ jobs:
           MODEL: ${{ inputs.model }}
           SOURCE: ${{ inputs.source }}
           MAX_RUNS: ${{ inputs.count }}
+          WAIT_SECONDS: ${{ inputs.wait }}
         run: bash scripts/capacity.sh
 
       - name: Shell
