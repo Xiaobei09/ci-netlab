@@ -15,6 +15,7 @@ SOURCE="${SOURCE:-all.txt}"
 MODEL="${MODEL:-opencode/big-pickle}"
 RELAY="${RELAY:-}"
 COUNT="${COUNT:-10}"
+RANK="${RANK:-0}"
 WS="${GITHUB_WORKSPACE:-$PWD}"
 
 sudo cp /etc/hosts /tmp/lab/hosts.orig
@@ -67,7 +68,14 @@ case "$RELAY" in
     ;;
   ''|auto)
     curl -fsSL --retry 5 --retry-delay 2 --max-time 180 "$BASE/data/valid/$SOURCE" -o /tmp/lab/relays.txt || exit 1
-    shuf -n "$((COUNT * 5))" /tmp/lab/relays.txt | cut -d'#' -f1 | awk '!seen[$0]++' > /tmp/lab/candidates.txt
+    if [ "$RANK" = '1' ]; then
+      # High reputation + rare exit country first; cap 2 per exit country.
+      python3 "$WS/scripts/rank.py" /tmp/lab/relays.txt "$((COUNT * 6))" > /tmp/lab/ranked.txt || exit 1
+      cut -d'#' -f1 /tmp/lab/ranked.txt | awk '!seen[$0]++' > /tmp/lab/candidates.txt
+    else
+      shuf -n "$((COUNT * 5))" /tmp/lab/relays.txt | cut -d'#' -f1 | awk '!seen[$0]++' > /tmp/lab/candidates.txt
+    fi
+    echo "selection: rank=$RANK candidates=$(wc -l < /tmp/lab/candidates.txt)"
     echo 'direct' >> /tmp/lab/targets.txt
     declare -A seen_eg=()
     while read -r hp; do

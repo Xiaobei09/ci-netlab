@@ -20,6 +20,10 @@ on:
         description: 'proxyip source file under data/valid/'
         required: false
         default: 'all.txt'
+      rank:
+        description: 'rank selection: 1 = high reputation + rare exit country'
+        required: false
+        default: '0'
       model:
         description: 'model for quota mode'
         required: false
@@ -65,6 +69,7 @@ jobs:
           MODEL: ${{ inputs.model }}
           SOURCE: ${{ inputs.source }}
           COUNT: ${{ inputs.count }}
+          RANK: ${{ inputs.rank }}
         run: bash scripts/quota.sh
 
       - name: Capacity test
