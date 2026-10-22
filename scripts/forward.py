@@ -25,9 +25,11 @@ def pipe(a, b):
 def handle(client, ip, port):
     try:
         upstream = socket.create_connection((ip, port), timeout=15)
-    except OSError:
+    except OSError as exc:
+        print(f"connect-fail {ip}:{port} {exc}", flush=True)
         client.close()
         return
+    print(f"connect {ip}:{port}", flush=True)
     threading.Thread(target=pipe, args=(client, upstream), daemon=True).start()
     pipe(upstream, client)
 
