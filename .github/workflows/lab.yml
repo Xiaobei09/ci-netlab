@@ -3,19 +3,19 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'probe | quota | shell'
+        description: 'probe | quota | capacity | shell'
         required: true
         default: probe
         type: choice
-        options: [probe, quota, shell]
+        options: [probe, quota, capacity, shell]
       relay:
         description: 'relay ip:port (blank = auto sample)'
         required: false
         default: ''
       count:
-        description: 'number of relays to sample (probe mode)'
+        description: 'relays to sample (probe/quota) or max client runs (capacity)'
         required: false
-        default: '12'
+        default: '10'
       source:
         description: 'proxyip source file under data/valid/'
         required: false
@@ -62,6 +62,15 @@ jobs:
           SOURCE: ${{ inputs.source }}
           COUNT: ${{ inputs.count }}
         run: bash scripts/quota.sh
+
+      - name: Capacity test
+        if: inputs.mode == 'capacity'
+        env:
+          RELAY: ${{ inputs.relay }}
+          MODEL: ${{ inputs.model }}
+          SOURCE: ${{ inputs.source }}
+          MAX_RUNS: ${{ inputs.count }}
+        run: bash scripts/capacity.sh
 
       - name: Shell
         if: inputs.mode == 'shell'
