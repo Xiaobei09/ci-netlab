@@ -1,0 +1,77 @@
+name: relay-lab
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'probe | quota | shell'
+        required: true
+        default: probe
+        type: choice
+        options: [probe, quota, shell]
+      relay:
+        description: 'relay ip:port (blank = auto sample)'
+        required: false
+        default: ''
+      count:
+        description: 'number of relays to sample (probe mode)'
+        required: false
+        default: '12'
+      source:
+        description: 'proxyip source file under data/valid/'
+        required: false
+        default: 'all.txt'
+      model:
+        description: 'model for quota mode'
+        required: false
+        default: 'opencode/big-pickle'
+      command:
+        description: 'command for shell mode'
+        required: false
+        default: ''
+permissions:
+  contents: read
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASE: https://raw.githubusercontent.com/Xiaobei09/proxyip/main
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Network identity
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/lab
+          echo "v4: $(curl -4 -sS --max-time 10 https://icanhazip.com || true)"
+          echo "v6: $(curl -6 -sS --max-time 10 https://icanhazip.com || true)"
+          curl -sS --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -E '^(ip|colo|loc)=' || true
+
+      - name: Probe relays
+        if: inputs.mode == 'probe'
+        env:
+          COUNT: ${{ inputs.count }}
+          SOURCE: ${{ inputs.source }}
+        run: bash scripts/probe.sh
+
+      - name: Quota test
+        if: inputs.mode == 'quota'
+        env:
+          RELAY: ${{ inputs.relay }}
+          MODEL: ${{ inputs.model }}
+          SOURCE: ${{ inputs.source }}
+        run: bash scripts/quota.sh
+
+      - name: Shell
+        if: inputs.mode == 'shell'
+        env:
+          COMMAND: ${{ inputs.command }}
+        run: bash -c "$COMMAND"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-log-${{ github.run_id }}
+          path: /tmp/lab/**
+          if-no-files-found: ignore
