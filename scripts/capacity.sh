@@ -57,7 +57,7 @@ run_client() {
   (
     cd "$ISO/work" || exit 1
     HOME="$ISO/home" XDG_CONFIG_HOME="$ISO/home/.config" \
-      setsid -w timeout 45 "$BIN" run --standalone --model "$MODEL" "Reply with exactly: OK" > "$log" 2>&1
+      setsid -w timeout 30 "$BIN" run --standalone --model "$MODEL" "Reply with exactly: OK" > "$log" 2>&1
   )
   RC=$?
   ERR=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -aE '^Error:' | head -1 | cut -c1-100)
@@ -110,6 +110,7 @@ map_relay "$RELAY"
 
 ok=0
 limited_at=0
+transport=0
 i=0
 while [ "$i" -lt "$MAX_RUNS" ]; do
   i=$((i + 1))
@@ -119,9 +120,17 @@ while [ "$i" -lt "$MAX_RUNS" ]; do
   printf 'run %-2d result=%-7s rc=%-3s conns=%-3s %s\n' "$i" "$RESULT" "$RC" "$conns" "$ERR"
   if [ "$RESULT" = SUCCESS ]; then
     ok=$((ok + 1))
-  else
+    transport=0
+  elif [ "$RESULT" = LIMITED ]; then
     limited_at=$i
     break
+  else
+    transport=$((transport + 1))
+    echo "transport/error streak=$transport (continuing)"
+    if [ "$transport" -ge 5 ]; then
+      echo "too many transport errors, stopping"
+      break
+    fi
   fi
 done
 
