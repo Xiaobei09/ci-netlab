@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'probe | quota | capacity | shell'
+        description: 'probe | quota | capacity | direct | hotswap | shell'
         required: true
         default: probe
         type: choice
-        options: [probe, quota, capacity, shell]
+        options: [probe, quota, capacity, direct, hotswap, shell]
       relay:
         description: 'relay ip:port (blank = auto sample)'
         required: false
@@ -81,6 +81,25 @@ jobs:
           MAX_RUNS: ${{ inputs.count }}
           WAIT_SECONDS: ${{ inputs.wait }}
         run: bash scripts/capacity.sh
+
+      - name: Direct capacity
+        if: inputs.mode == 'direct'
+        env:
+          MODEL: ${{ inputs.model }}
+          MAX_RUNS: ${{ inputs.count }}
+          WAIT_SECONDS: ${{ inputs.wait }}
+        run: bash scripts/direct_capacity.sh
+
+      - name: Hotswap test
+        if: inputs.mode == 'hotswap'
+        env:
+          RELAY: ${{ inputs.relay }}
+          MODEL: ${{ inputs.model }}
+          SOURCE: ${{ inputs.source }}
+          COUNT: ${{ inputs.count }}
+          RANK: ${{ inputs.rank }}
+          SWITCH_DELAY: ${{ inputs.wait }}
+        run: bash scripts/hotswap.sh
 
       - name: Shell
         if: inputs.mode == 'shell'
