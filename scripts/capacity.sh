@@ -69,7 +69,7 @@ run_client() {
   (
     cd "$ISO/work" || exit 1
     HOME="$ISO/home" XDG_CONFIG_HOME="$ISO/home/.config" \
-      setsid -w timeout 30 "$BIN" run --standalone --model "$MODEL" "Reply with exactly: OK" > "$log" 2>&1
+      setsid -w timeout 45 "$BIN" run --standalone --model "$MODEL" "Reply with exactly: OK" > "$log" 2>&1
   )
   RC=$?
   ERR=$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -aE '^Error:' | head -1 | cut -c1-100)
