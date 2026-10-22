@@ -60,6 +60,7 @@ jobs:
           RELAY: ${{ inputs.relay }}
           MODEL: ${{ inputs.model }}
           SOURCE: ${{ inputs.source }}
+          COUNT: ${{ inputs.count }}
         run: bash scripts/quota.sh
 
       - name: Shell
