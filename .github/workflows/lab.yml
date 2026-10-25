@@ -7,7 +7,7 @@ on:
         required: true
         default: probe
         type: choice
-        options: [probe, quota, capacity, direct, hotswap, shell]
+        options: [probe, quota, capacity, direct, hotswap, zengate, shell]
       relay:
         description: 'relay ip:port (blank = auto sample)'
         required: false
@@ -89,6 +89,20 @@ jobs:
           MAX_RUNS: ${{ inputs.count }}
           WAIT_SECONDS: ${{ inputs.wait }}
         run: bash scripts/direct_capacity.sh
+
+      - name: Setup Node 24
+        if: inputs.mode == 'zengate'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Zengate IP probe
+        if: inputs.mode == 'zengate'
+        env:
+          COUNT: ${{ inputs.count }}
+          SOURCE: ${{ inputs.source }}
+          MODEL: ${{ inputs.model }}
+        run: bash scripts/zengate-probe.sh
 
       - name: Hotswap test
         if: inputs.mode == 'hotswap'
