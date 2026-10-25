@@ -62,7 +62,11 @@ if [ "$REASON" = "quota" ]; then
   echo "rotate: quota is account-wide; keeping $CUR_KEY eligible (not blacklisted)"
 else
   egress_bl_add "$CUR_KEY" "$CUR_EGRESS" "$REASON" "$TTL" || true
-  echo "rotate: blacklisted $CUR_KEY ($REASON, ${TTL}s)"
+  if [ "$EGRESS_BLACKLIST_ENABLED" = "1" ]; then
+    echo "rotate: blacklisted $CUR_KEY ($REASON, ${TTL}s)"
+  else
+    echo "rotate: blacklist disabled; did not persist $CUR_KEY"
+  fi
 fi
 
 tries=0
@@ -121,7 +125,11 @@ while IFS=$'\t' read -r kind target source; do
   fi
   if [ "$why" = "quota" ]; then quota_fails=$((quota_fails + 1)); else other_fails=$((other_fails + 1)); fi
   egress_bl_add "$key" "$failed_egress" "$why" "$TTL" || true
-  echo "rotate: candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?}"
+  if [ "$EGRESS_BLACKLIST_ENABLED" = "1" ]; then
+    echo "rotate: candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?} (blacklist ${TTL}s)"
+  else
+    echo "rotate: candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?} (blacklist disabled)"
+  fi
 done < "$EGRESS_CANDIDATES_FILE"
 
 # No alternative passed. The egress we were already using is still the best

@@ -71,7 +71,7 @@ start() {
   proxy_ready || { log "probe proxy did not listen"; kill "$p_pid" 2>/dev/null; return 1; }
   local proxy_url="http://127.0.0.1:${PROBE_PORT}"
   env HOST=127.0.0.1 PORT="$ZG_PORT" ALLOW_NO_AUTH=true \
-    LOG_LEVEL=warn REQUEST_TIMEOUT_MS="${EGRESS_PROBE_REQUEST_TIMEOUT_MS:-90000}" \
+    LOG_LEVEL=warn REQUEST_TIMEOUT_MS="${EGRESS_PROBE_REQUEST_TIMEOUT_MS:-20000}" \
     MAX_CONCURRENT="${EGRESS_PROBE_CONCURRENCY:-1}" \
     HTTP_PROXY="$proxy_url" HTTPS_PROXY="$proxy_url" \
     http_proxy="$proxy_url" https_proxy="$proxy_url" \
