@@ -17,8 +17,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REASON="${1:-quota}"
 [ "$REASON" = "--reason" ] && REASON="${2:-quota}"
 case "$REASON" in
-  quota)     TTL=21600 ;;  # 6h: OpenCode free-tier window is unknown but >15m
-  transport) TTL=1800  ;;  # 30m for dead relays
+  quota)     TTL=1800 ;;  # 30m: quota is usually account/model-wide, not IP-wide
+  transport) TTL=1800 ;;  # 30m for dead relays
   *)         TTL=3600  ;;
 esac
 
@@ -26,6 +26,16 @@ egress_bl_init
 egress_bl_prune
 mkdir -p "$EGRESS_STATE_DIR"
 [ -f "$EGRESS_CANDIDATES_FILE" ] || { echo "rotate: no candidate list"; exit 1; }
+
+PREFLIGHT_TMO="${EGRESS_PREFLIGHT_TIMEOUT:-20}"
+PROBE_ENGINE=curl
+if bash "$SCRIPT_DIR/egress-probe-server.sh" start; then
+  PROBE_ENGINE=zengate
+  trap 'bash "$SCRIPT_DIR/egress-probe-server.sh" stop' EXIT
+  echo "rotate: preflight engine=zengate (real OpenCode, fresh session per candidate)"
+else
+  echo "rotate: warning: zengate probe unavailable; falling back to curl preflight"
+fi
 
 CUR_KIND=$(jq -r '.kind // "direct"' "$EGRESS_STATE_FILE" 2>/dev/null || echo direct)
 CUR_UP=$(jq -r '.upstream // "direct"' "$EGRESS_STATE_FILE" 2>/dev/null || echo direct)
@@ -38,13 +48,26 @@ case "$CUR_KIND" in
   *)      CUR_KEY="$CUR_UP" ;;
 esac
 
+# R2509: quota follows the account/model, not the egress IP (measured: direct +
+# 48 relays all 429). Do not blacklist the current route for quota, and only
+# sample a few relays before keeping it; transport failures still use the full
+# candidate budget.
+MAX_TRIES=${EGRESS_SELECT_MAX:-12}
+[ "$REASON" = "quota" ] && MAX_TRIES=${EGRESS_QUOTA_PROBE_MAX:-4}
+
 # Mark the current egress as unusable for a while. For a relay/http candidate
 # the key is the entry address; the preflight that just failed was the same one.
 CUR_EGRESS=$(jq -r '.egress_ip // empty' "$EGRESS_STATE_FILE" 2>/dev/null || true)
-egress_bl_add "$CUR_KEY" "$CUR_EGRESS" "$REASON" "$TTL" || true
-echo "rotate: blacklisted $CUR_KEY ($REASON, ${TTL}s)"
+if [ "$REASON" = "quota" ]; then
+  echo "rotate: quota is account-wide; keeping $CUR_KEY eligible (not blacklisted)"
+else
+  egress_bl_add "$CUR_KEY" "$CUR_EGRESS" "$REASON" "$TTL" || true
+  echo "rotate: blacklisted $CUR_KEY ($REASON, ${TTL}s)"
+fi
 
 tries=0
+quota_fails=0
+other_fails=0
 while IFS=$'\t' read -r kind target source; do
   [ -n "${kind:-}" ] || continue
   case "$kind" in
@@ -60,9 +83,16 @@ while IFS=$'\t' read -r kind target source; do
     continue
   fi
   tries=$((tries + 1))
-  [ "$tries" -gt 80 ] && { echo "rotate: candidate budget exhausted"; break; }
+  # Same tuning as select-proxy: 8s is enough for a real inference answer. Quota
+  # rotations only sample EGRESS_QUOTA_PROBE_MAX relays (default 4); transport
+  # rotations keep the full 48-candidate budget.
+  [ "$tries" -gt "$MAX_TRIES" ] && { echo "rotate: candidate budget exhausted ($MAX_TRIES)"; break; }
 
-  out=$(bash "$SCRIPT_DIR/egress-preflight.sh" "$kind" "$([ "$kind" = direct ] && echo '' || echo "$target")" 12 2>/dev/null || true)
+  if [ "$PROBE_ENGINE" = "zengate" ]; then
+    out=$(bash "$SCRIPT_DIR/egress-preflight-zengate.sh" "$kind" "$([ "$kind" = direct ] && echo '' || echo "$target")" "$PREFLIGHT_TMO" 2>/dev/null || true)
+  else
+    out=$(bash "$SCRIPT_DIR/egress-preflight.sh" "$kind" "$([ "$kind" = direct ] && echo '' || echo "$target")" "$PREFLIGHT_TMO" 2>/dev/null || true)
+  fi
   code=${out%%$'\t'*}
   why=${out##*$'\t'}
   [ -n "$code" ] || code=000
@@ -89,9 +119,18 @@ while IFS=$'\t' read -r kind target source; do
   else
     failed_egress=""
   fi
+  if [ "$why" = "quota" ]; then quota_fails=$((quota_fails + 1)); else other_fails=$((other_fails + 1)); fi
   egress_bl_add "$key" "$failed_egress" "$why" "$TTL" || true
   echo "rotate: candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?}"
 done < "$EGRESS_CANDIDATES_FILE"
 
-echo "rotate: no candidate passed the preflight"
+# No alternative passed. The egress we were already using is still the best
+# choice we have, so undo its blacklist entry instead of leaving the runner
+# with no usable route (and a 30m hole in the candidate list). Quota failures
+# are almost always account/model-wide: rotating IPs cannot buy quota back.
+egress_bl_del "$CUR_KEY"
+echo "rotate: no candidate passed the preflight; keeping current egress and unblacklisting $CUR_KEY (quota_fails=$quota_fails other_fails=$other_fails)"
+if [ "$quota_fails" -gt 0 ] && [ "$other_fails" -eq 0 ]; then
+  exit 2
+fi
 exit 1
