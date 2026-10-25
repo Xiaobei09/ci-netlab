@@ -21,4 +21,14 @@ echo "--- blacklist exists? ---"
 ls -l "$HOME/.config/opencode/egress-blacklist.json" 2>/dev/null || echo "none"
 echo "--- probe proxy log ---"
 tail -20 "$EGRESS_STATE_DIR/probe/proxy.log" 2>/dev/null || true
+
+if [ "${ROTATE:-0}" = "1" ]; then
+  echo "--- rotate transport test ---"
+  bash scripts/egress-rotate.sh --reason transport
+  echo "rotate rc=$?"
+  echo "--- state after rotate ---"
+  cat "$HOME/.config/opencode/exit-proxy.json" 2>/dev/null || true
+  echo "--- probe proxy log after rotate ---"
+  tail -30 "$EGRESS_STATE_DIR/probe/proxy.log" 2>/dev/null || true
+fi
 exit "$rc"
