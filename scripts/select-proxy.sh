@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Select the initial egress for this CI run and write a local-proxy handoff.
 #
-# This replaces the old "probe /zen/v1/models" logic: a 200 from that endpoint
-# does NOT mean the free-tier quota is available. Every candidate is tested
-# with the real inference call (egress-preflight.sh) and only a 200 switches.
+# Every candidate is tested by zengate (the real OpenCode CLI, a fresh
+# conversation per candidate) through the candidate-specific local CONNECT
+# proxy. A curl fallback exists only for zengate startup failures.
 #
 # Outputs:
 #   $RUNNER_TEMP/egress/upstream        direct | relay:ip:port | http:host:port
@@ -28,11 +28,21 @@ echo 0 > "$EGRESS_EPOCH_FILE"
 egress_bl_init
 egress_bl_prune
 
-SELECT_BUDGET="${EGRESS_SELECT_BUDGET:-240}"
-SELECT_MAX="${EGRESS_SELECT_MAX:-80}"
+SELECT_BUDGET="${EGRESS_SELECT_BUDGET:-120}"
+SELECT_MAX="${EGRESS_SELECT_MAX:-12}"
+PREFLIGHT_TMO="${EGRESS_PREFLIGHT_TIMEOUT:-20}"
 START=$(egress_now)
 
 log() { echo "[egress-select] $*"; }
+
+PROBE_ENGINE=curl
+if bash "$SCRIPT_DIR/egress-probe-server.sh" start; then
+  PROBE_ENGINE=zengate
+  log "preflight engine=zengate (real OpenCode, fresh session per candidate)"
+  trap 'bash "$SCRIPT_DIR/egress-probe-server.sh" stop' EXIT
+else
+  log "warning: zengate probe unavailable; falling back to curl preflight"
+fi
 
 DIRECT_IP=$(egress_trace_direct)
 DIRECT_COLO=$(curl -sS -m 10 --noproxy '*' https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | awk -F= '/^colo=/{print $2}')
@@ -114,10 +124,12 @@ while IFS=$'\t' read -r kind target source; do
     continue
   fi
   n=$((n + 1))
-  if [ "$kind" = "direct" ]; then
-    out=$(bash "$SCRIPT_DIR/egress-preflight.sh" direct "" 12 2>/dev/null || true)
+  if [ "$PROBE_ENGINE" = "zengate" ]; then
+    out=$(bash "$SCRIPT_DIR/egress-preflight-zengate.sh" "$kind" "$([ "$kind" = direct ] && echo "" || echo "$target")" "$PREFLIGHT_TMO" 2>/dev/null || true)
+  elif [ "$kind" = "direct" ]; then
+    out=$(bash "$SCRIPT_DIR/egress-preflight.sh" direct "" "$PREFLIGHT_TMO" 2>/dev/null || true)
   else
-    out=$(bash "$SCRIPT_DIR/egress-preflight.sh" "$kind" "$target" 12 2>/dev/null || true)
+    out=$(bash "$SCRIPT_DIR/egress-preflight.sh" "$kind" "$target" "$PREFLIGHT_TMO" 2>/dev/null || true)
   fi
   code=${out%%$'\t'*}
   why=${out##*$'\t'}
@@ -147,7 +159,11 @@ while IFS=$'\t' read -r kind target source; do
     failed_egress=""
   fi
   egress_bl_add "$key" "$failed_egress" "$why" "$ttl" || true
-  log "candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?} (blacklist ${ttl}s)"
+  if [ "$EGRESS_BLACKLIST_ENABLED" = "1" ]; then
+    log "candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?} (blacklist ${ttl}s)"
+  else
+    log "candidate $kind $target failed code=$code reason=$why egress=${failed_egress:-?} (blacklist disabled)"
+  fi
 done < "$EGRESS_CANDIDATES_FILE"
 
 if [ -z "$SELECTED_KIND" ]; then
